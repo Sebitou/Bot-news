@@ -1,0 +1,53 @@
+name: Noticias UPS
+
+on:
+  schedule:
+    # Se ejecuta cada 2 horas (puedes cambiarlo)
+    - cron: '0 */2 * * *'
+  # Esto te permite ejecutarlo manualmente desde la pestaña "Actions"
+  workflow_dispatch:
+
+jobs:
+  run-and-process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Checkout (Traer el código)
+        # Trae bot.py, requirements.txt, y publicadas.txt
+        uses: actions/checkout@v3
+
+      - name: 2. Iniciar el "Run" en ParseHub
+        # Le dice a ParseHub que empiece a scrapear AHORA
+        run: |
+          curl -X POST "https://www.parsehub.com/api/v2/projects/${{ secrets.PARSEHUB_PROJECT_TOKEN }}/run" \
+            -d "api_key=${{ secrets.PARSEHUB_API_KEY }}"
+        
+      - name: 3. Esperar a que ParseHub termine
+        # El plan gratuito es lento. Le damos 5 minutos de espera.
+        run: |
+          echo "Esperando 5 minutos a que ParseHub (plan gratuito) termine el scraping..."
+          sleep 300
+
+      - name: 4. Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 5. Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: 6. Ejecutar script de Python
+        # Este script ahora tomará los datos que ParseHub acaba de generar
+        env:
+          PARSEHUB_API_KEY: ${{ secrets.PARSEHUB_API_KEY }}
+          PARSEHUB_PROJECT_TOKEN: ${{ secrets.PARSEHUB_PROJECT_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python bot.py
+
+      - name: 7. Guardar el historial (Commit)
+        # Guarda el archivo publicadas.txt actualizado en tu repositorio
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add publicadas.txt
+          git commit -m "Actualizar historial de noticias publicadas" || echo "Sin cambios en el historial"
+          git push
